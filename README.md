@@ -15,7 +15,7 @@ simple-in-mem-websocket-chat-app
 You have two choices for how you can deploy this code.
 
 ## Serverless Application Repository
-TODO
+TODO!
 The first and fastest way is to use AWS's Serverless Application Respository to directly deploy the components of this app into your account without needing to use any additional tools. You'll be able to review everything before it deploys to make sure you understand what will happen.  Click through to see the [application details](https://serverlessrepo.aws.amazon.com/applications/arn:aws:serverlessrepo:us-east-1:729047367331:applications~simple-websockets-chat-app).
 
 ## AWS CLI commands
