@@ -1,32 +1,23 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  simple-websockets-chat-app
+  simple-in-mem-websockets-chat-app
 
-  SAM Template for simple-websockets-chat-app that has the DynamoDB table and Lambda
-  functions needed to demonstrate the Websocket protocol on API Gateway.
-
-Parameters:
-  TableName:
-    Type: String
-    Default: 'simplechat_connections'
-    Description: (Required) The name of the new DynamoDB to store connection identifiers for each connected clients. Minimum 3 characters
-    MinLength: 3
-    MaxLength: 50
-    AllowedPattern: ^[A-Za-z_]+$
-    ConstraintDescription: 'Required. Can be characters and underscore only. No numbers or special characters allowed.'
+  SAM Template for simple-websockets-chat-app that has the Lambda function needed
+  to demonstrate the Websocket protocol on API Gateway without using a DynamoDB
+  table
 
 Resources:
-  SimpleChatWebSocket:
+  SimpleInMemChatWebSocket:
     Type: AWS::ApiGatewayV2::Api
     Properties:
-      Name: SimpleChatWebSocket
+      Name: SimpleInMemChatWebSocket
       ProtocolType: WEBSOCKET
       RouteSelectionExpression: "$request.body.message"
   ConnectRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref SimpleChatWebSocket
+      ApiId: !Ref SimpleInMemChatWebSocket
       RouteKey: $connect
       AuthorizationType: NONE
       OperationName: ConnectRoute
@@ -37,16 +28,16 @@ Resources:
   ConnectInteg:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref SimpleChatWebSocket
+      ApiId: !Ref SimpleInMemChatWebSocket
       Description: Connect Integration
       IntegrationType: AWS_PROXY
-      IntegrationUri: 
+      IntegrationUri:
         Fn::Sub:
-            arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OnConnectFunction.Arn}/invocations
+            arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ControllerFunction.Arn}/invocations
   DisconnectRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref SimpleChatWebSocket
+      ApiId: !Ref SimpleInMemChatWebSocket
       RouteKey: $disconnect
       AuthorizationType: NONE
       OperationName: DisconnectRoute
@@ -57,16 +48,16 @@ Resources:
   DisconnectInteg:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref SimpleChatWebSocket
+      ApiId: !Ref SimpleInMemChatWebSocket
       Description: Disconnect Integration
       IntegrationType: AWS_PROXY
-      IntegrationUri: 
+      IntegrationUri:
         Fn::Sub:
-            arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OnDisconnectFunction.Arn}/invocations
+            arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ControllerFunction.Arn}/invocations
   SendRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
-      ApiId: !Ref SimpleChatWebSocket
+      ApiId: !Ref SimpleInMemChatWebSocket
       RouteKey: sendmessage
       AuthorizationType: NONE
       OperationName: SendRoute
@@ -77,12 +68,12 @@ Resources:
   SendInteg:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
-      ApiId: !Ref SimpleChatWebSocket
+      ApiId: !Ref SimpleInMemChatWebSocket
       Description: Send Integration
       IntegrationType: AWS_PROXY
-      IntegrationUri: 
+      IntegrationUri:
         Fn::Sub:
-            arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SendMessageFunction.Arn}/invocations
+            arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ControllerFunction.Arn}/invocations
   Deployment:
     Type: AWS::ApiGatewayV2::Deployment
     DependsOn:
@@ -90,116 +81,47 @@ Resources:
     - SendRoute
     - DisconnectRoute
     Properties:
-      ApiId: !Ref SimpleChatWebSocket
+      ApiId: !Ref SimpleInMemChatWebSocket
   Stage:
     Type: AWS::ApiGatewayV2::Stage
     Properties:
       StageName: Prod
       Description: Prod Stage
       DeploymentId: !Ref Deployment
-      ApiId: !Ref SimpleChatWebSocket
-  ConnectionsTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      AttributeDefinitions:
-      - AttributeName: "connectionId"
-        AttributeType: "S"
-      KeySchema:
-      - AttributeName: "connectionId"
-        KeyType: "HASH"
-      ProvisionedThroughput:
-        ReadCapacityUnits: 5
-        WriteCapacityUnits: 5
-      SSESpecification:
-        SSEEnabled: True
-      TableName: !Ref TableName
-  OnConnectFunction:
+      ApiId: !Ref SimpleInMemChatWebSocket
+
+  ControllerFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: onconnect/
+      CodeUri: controller/
       Handler: app.handler
       MemorySize: 256
       Runtime: nodejs12.x
       Environment:
         Variables:
-          TABLE_NAME: !Ref TableName
+          VAR_NAME: VAR_VALUE
       Policies:
-      - DynamoDBCrudPolicy:
-          TableName: !Ref TableName
-  OnConnectPermission:
-    Type: AWS::Lambda::Permission
-    DependsOn:
-      - SimpleChatWebSocket
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref OnConnectFunction
-      Principal: apigateway.amazonaws.com
-  OnDisconnectFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: ondisconnect/
-      Handler: app.handler
-      MemorySize: 256
-      Runtime: nodejs12.x
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref TableName
-      Policies:
-      - DynamoDBCrudPolicy:
-          TableName: !Ref TableName
-  OnDisconnectPermission:
-    Type: AWS::Lambda::Permission
-    DependsOn:
-      - SimpleChatWebSocket
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref OnDisconnectFunction
-      Principal: apigateway.amazonaws.com
-  SendMessageFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: sendmessage/
-      Handler: app.handler
-      MemorySize: 256
-      Runtime: nodejs12.x
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref TableName
-      Policies:
-      - DynamoDBCrudPolicy:
-          TableName: !Ref TableName
       - Statement:
         - Effect: Allow
           Action:
           - 'execute-api:ManageConnections'
           Resource:
-          - !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SimpleChatWebSocket}/*'
-  SendMessagePermission:
+          - !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SimpleInMemChatWebSocket}/*'
+
+  ControllerPermission:
     Type: AWS::Lambda::Permission
     DependsOn:
-      - SimpleChatWebSocket
+      - SimpleInMemChatWebSocket
     Properties:
       Action: lambda:InvokeFunction
-      FunctionName: !Ref SendMessageFunction
+      FunctionName: !Ref ControllerFunction
       Principal: apigateway.amazonaws.com
-
 Outputs:
-  ConnectionsTableArn:
-    Description: "Connections table ARN"
-    Value: !GetAtt ConnectionsTable.Arn
 
-  OnConnectFunctionArn:
-    Description: "OnConnect function ARN"
-    Value: !GetAtt OnConnectFunction.Arn
-
-  OnDisconnectFunctionArn:
-    Description: "OnDisconnect function ARN"
-    Value: !GetAtt OnDisconnectFunction.Arn
-
-  SendMessageFunctionArn:
-    Description: "SendMessage function ARN"
-    Value: !GetAtt SendMessageFunction.Arn
+  ControllerFunctionArn:
+    Description: "Controller function ARN"
+    Value: !GetAtt ControllerFunction.Arn
 
   WebSocketURI:
     Description: "The WSS Protocol URI to connect to"
-    Value: !Join [ '', [ 'wss://', !Ref SimpleChatWebSocket, '.execute-api.',!Ref 'AWS::Region','.amazonaws.com/',!Ref 'Stage'] ]
+    Value: !Join [ '', [ 'wss://', !Ref SimpleInMemChatWebSocket, '.execute-api.',!Ref 'AWS::Region','.amazonaws.com/',!Ref 'Stage'] ]
