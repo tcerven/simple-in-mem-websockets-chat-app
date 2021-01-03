@@ -3,10 +3,12 @@
 const AWS = require('aws-sdk');
 
 //global connections list
+console.log('Creating connection list');
 var connections=[];
 
 exports.handler = async event => {
   const routeKey = event.requestContext.routeKey;
+  console.log(`routeKey=${routeKey}`);
 
   if (routeKey == '$connect') {
     return onConnect(event);
@@ -20,7 +22,10 @@ exports.handler = async event => {
 }
 
 async function onConnect(event) {
+  console.log(`event.requestContext.connectionId=${event.requestContext.connectionId}`);
   connections.push(event.requestContext.connectionId);
+  console.log(`connections=${connections}`);
+  console.log(`connections.length=${connections.length}`);
   return { statusCode: 200, body: 'Connected.' };
 };
 
@@ -30,33 +35,46 @@ const sendMessage = async event => {
     endpoint: event.requestContext.domainName + '/' + event.requestContext.stage
   });
 
-  const postData = JSON.parse(event.body).data;
-  console.log(`postData: ${postData}`);
+  const postData = JSON.parse(event.body);//.data;
+  console.log(`postData: ${JSON.stringify(postData)}`);
+  const data = postData.data;
 
-  const newConnections=[];
+  console.log(`connections=${connections}`);
+  console.log(`connections.length=${connections.length}`);
   const postCalls = connections.map(async (connectionId) => {
+    console.log(`Posting to ${connectionId}`);
     try {
-      await apigwManagementApi.postToConnection({ ConnectionId: connectionId, Data: postData }).promise();
-      newConnections.push(connectionId);
+      await apigwManagementApi.postToConnection({ ConnectionId: connectionId, Data: data }).promise();
+      console.log(`Posted to ${connectionId}`);
+      return {connectionId};
     } catch (e) {
       if (e.statusCode === 410) {
         console.log(`Found stale connection, deleting ${connectionId}`);
+        return {stale: connectionId}
         // we can say that the connectionId is "deleted" because we do not push
         // the connectionId into the newConnections list
       } else {
-        throw e;
+        const msg = `postToConnection failed for connection, deleting ${connectionId}, ${e}`;
+        console.error(msg);
+        return {error: e};
       }
     }
   });
 
   try {
-    await Promise.all(postCalls);
-    connections=newConnections;
+    let callrets = await Promise.all(postCalls);
+    connections = callrets.filter(c => {
+      c==undefined ? console.log(`i am undefined`) : console.log(c);
+      if (c && c.connectionId) {
+        return true;
+      }
+    });
+    connections = connections.map(c => c.connectionId);
+    console.log(`connections=${connections}`);
+
   } catch (e) {
     return { statusCode: 500, body: e.stack };
   }
-
-  // console.log('Data sent.');
   return { statusCode: 200, body: 'Data sent.' };
 };
 
